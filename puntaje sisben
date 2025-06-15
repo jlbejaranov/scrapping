@@ -1,1 +1,80 @@
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+
+# Leer archivo de Excel
+df = pd.read_excel("datos_sisben.xlsx")
+
+# Agregar columnas para resultados
+df['Nombres'] = ""
+df['Apellidos'] = ""
+df['Grupo'] = ""
+
+# Configurar navegador
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+wait = WebDriverWait(driver, 15)
+
+# Ir a la URL
+driver.get("https://reportes.sisben.gov.co/dnp_sisbenconsulta")
+
+for i, row in df.iterrows():
+    try:
+        print(f"[{i+1}] Consultando documento: {row['Documento']}")
+
+        tipo = str(row['Tipo']).strip()
+        documento = str(row['Documento']).strip()
+
+        # Esperar que aparezca el select y seleccionar tipo
+        select_tipo = Select(wait.until(
+            EC.presence_of_element_located((By.ID, "TipoID"))
+        ))
+        select_tipo.select_by_value(tipo)
+
+        # Llenar documento
+        input_doc = driver.find_element(By.ID, "documento")
+        input_doc.clear()
+        input_doc.send_keys(documento)
+
+        # Clic en botón
+        boton = driver.find_element(By.ID, "botonenvio")
+        boton.click()
+
+        # Esperar respuesta
+        campos = wait.until(
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, ".campo1.pt-1.pl-2.font-weight-bold")
+            )
+        )
+
+        df.at[i, 'Nombres'] = campos[0].text
+        df.at[i, 'Apellidos'] = campos[1].text
+
+        # Obtener grupo Sisbén
+        grupo = wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "p.text-uppercase.font-weight-bold.text-white")
+            )
+        )
+        df.at[i, 'Grupo'] = grupo.text
+
+        print(f" {campos[0].text} {campos[1].text} - Grupo: {grupo.text}")
+
+        # Regresar al inicio
+        driver.get("https://wsp.sisben.gov.co/ConsultaPublica/consulta.aspx")
+
+    except Exception as e:
+        print(f"Error con documento {row['Documento']}: {e}")
+        driver.get("hhttps://reportes.sisben.gov.co/dnp_sisbenconsulta")
+        continue
+
+# Guardar resultados
+df.to_excel("resultados_sisben.xlsx", index=False)
+print(" Resultados guardados en resultados_sisben.xlsx")
+
+driver.quit()
 
